@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Local Library</title>
+<style>
+  :root { --bg: #f7f5f0; --fg: #1d1b18; --muted: #6f6a61; --card: #fff; --line: #e3ded4; --accent: #8a4b1f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16150f; --fg: #ece8df; --muted: #9c968a; --card: #211f19; --line: #34312a; --accent: #e0a36d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.55 Georgia, "Times New Roman", serif; }
+  header { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: baseline;
+           padding: 14px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 20px; }
+  a { color: var(--accent); }
+  header a { font: 14px system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 16px 16px 120px; }
+  .msg { margin: 0 0 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .user { margin-left: 15%; padding: 10px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+  .status, .sources, .empty { font: 14px/1.4 system-ui, sans-serif; color: var(--muted); }
+  .sources { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; white-space: normal; }
+  .sources a { padding: 3px 9px; border: 1px solid var(--line); border-radius: 99px; text-decoration: none; background: var(--card); }
+  .error { color: #c0392b; }
+  form { position: fixed; bottom: 0; left: 0; right: 0; display: flex; gap: 8px;
+         padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
+  input { flex: 1; min-width: 0; padding: 12px 14px; font: 16px system-ui, sans-serif; color: var(--fg);
+          background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  button { padding: 0 18px; font: 600 16px system-ui, sans-serif; color: var(--bg); background: var(--accent); border: 0; border-radius: 12px; }
+  button:disabled { opacity: .5; }
+</style>
+</head>
+<body>
+<header><h1>Local Library</h1><a href="/content/wikipedia" target="_blank">Browse Wikipedia ↗</a></header>
+<main id="log"><p class="empty">Ask about anything in Wikipedia: “Why did the Western Roman Empire fall?”</p></main>
+<form id="form">
+  <input id="q" autocomplete="off" placeholder="Ask a question…" aria-label="Question" required>
+  <button id="send">Ask</button>
+</form>
+<script>
+const log = document.getElementById("log"), form = document.getElementById("form"),
+      q = document.getElementById("q"), send = document.getElementById("send");
+const turns = [];
+
+const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+function render(text, sources) {
+  const href = n => sources.find(s => s.n == n)?.path;
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\[(\d)\]/g, (m, n) => href(n) ? `<a href="${esc(href(n))}" target="_blank">[${n}]</a>` : m);
+}
+function add(cls, text = "") {
+  const el = document.createElement("div");
+  el.className = "msg " + cls;
+  el.textContent = text;
+  log.append(el);
+  return el;
+}
+
+form.onsubmit = async e => {
+  e.preventDefault();
+  const message = q.value.trim();
+  if (!message) return;
+  log.querySelector(".empty")?.remove();
+  add("user", message);
+  q.value = ""; send.disabled = true;
+  const out = add("bot"), status = add("status", "Thinking…");
+  let text = "", sources = [];
+  try {
+    const res = await fetch("/ask", {method: "POST", body: JSON.stringify({message, history: turns})});
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines.filter(Boolean)) {
+        const m = JSON.parse(line);
+        if (m.status) status.textContent = m.status;
+        if (m.sources) { sources = m.sources; status.textContent = m.jev ? "Sources picked by Jev" : "Sources"; }
+        if (m.token) { text += m.token; out.innerHTML = render(text, sources); }
+        if (m.error) throw new Error(m.error);
+      }
+      scrollTo(0, document.body.scrollHeight);
+    }
+    status.className = "msg sources";
+    status.innerHTML = sources.map(s => `<a href="${esc(s.path)}" target="_blank">[${s.n}] ${esc(s.title)}</a>`).join("");
+    turns.push({role: "user", content: message}, {role: "assistant", content: text});
+  } catch (err) {
+    status.className = "msg status error";
+    status.textContent = "Something went wrong: " + err.message;
+  }
+  send.disabled = false; q.focus();
+};
+</script>
+</body>
+</html>
