@@ -66,6 +66,7 @@ ln -sfn "$ZIM" "$DATA/wikipedia.zim"  # the file name is the book name, so URLs 
 find "$DATA" -maxdepth 1 -name 'wikipedia_en_all_*.zim' ! -name "$ZIM" -print -delete  # older editions
 
 step "Local Library app"
+id -u local-library >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin local-library
 install -m 644 "$SRC/app.py" "$SRC/index.html" "$APP/"
 [ -f "$ENV" ] || printf 'MODEL=%s\nPORT=%s\nTYPESAFE_API_KEY=\n' "$MODEL" "$PORT" > "$ENV"
 sed -i "s|^MODEL=.*|MODEL=$MODEL|" "$ENV"
@@ -79,8 +80,9 @@ After=network.target
 
 [Service]
 ExecStart=$APP/bin/kiwix-serve --address=127.0.0.1 --port=8080 $DATA/wikipedia.zim
-DynamicUser=yes
+User=local-library
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -95,9 +97,10 @@ Wants=network-online.target
 [Service]
 EnvironmentFile=$ENV
 ExecStart=/usr/bin/python3 $APP/app.py
-DynamicUser=yes
+User=local-library
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
