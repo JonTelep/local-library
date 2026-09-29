@@ -20,6 +20,13 @@ ZIMS=https://download.kiwix.org/zim/wikipedia
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
+step "Laptop lid"
+mkdir -p /etc/systemd/logind.conf.d
+printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nHandleLidSwitchDocked=ignore\n' \
+  > /etc/systemd/logind.conf.d/local-library.conf
+systemctl kill -s HUP systemd-logind
+echo "Closing the lid no longer suspends the machine."
+
 step "Packages"
 apt-get update -qq
 apt-get install -y -qq curl wget python3 pciutils ubuntu-drivers-common zstd >/dev/null
@@ -109,13 +116,6 @@ EOF
 systemctl daemon-reload
 systemctl enable -q kiwix local-library
 systemctl restart kiwix local-library
-
-step "Laptop lid"
-mkdir -p /etc/systemd/logind.conf.d
-printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nHandleLidSwitchDocked=ignore\n' \
-  > /etc/systemd/logind.conf.d/local-library.conf
-systemctl kill -s HUP systemd-logind
-echo "Closing the lid no longer suspends the machine."
 
 if ufw status 2>/dev/null | grep -q "Status: active"; then
   step "Firewall"
